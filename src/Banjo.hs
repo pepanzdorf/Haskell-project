@@ -1,7 +1,10 @@
 module Banjo (module Banjo) where
 
 import Data.List
+import Data.Maybe
+import Data.Either
 import Text.Read
+import Control.Applicative
 
 -- Data structure definitions
 
@@ -20,6 +23,34 @@ instance Show Accidental where
 
 instance Show Note where
   show (Note bass acc) = show bass ++ show acc
+
+instance Read Note where
+  readsPrec _ input =
+    case input of
+      (base:accidental:r) -> case readEither [base] of
+        Right baseNote -> case accidental of
+          'b' -> [(Note baseNote Flat, r)]
+          '#' -> [(Note baseNote Sharp, r)]
+          _   -> []
+        Left _ -> []
+      (base:r) -> case readEither [base] of
+        Right baseNote -> [(Note baseNote Natural, r)]
+        Left _ -> []
+      _ -> []
+
+
+  readList str = case words str of
+      [] -> []
+      xs -> do
+              let notes = map readEither xs::[(Either String Note)]
+              if any isLeft notes then
+                []
+              else
+                [(map (fromRight (error "Unexpexted Left")) notes, "")]
+                  where
+                    isLeft :: Either a b -> Bool
+                    isLeft (Left _) = True
+                    isLeft _        = False
 
 instance Show Chord where
   show (Chord n m s) = (show n) ++ " " ++ (show m) ++ showAlternations s
@@ -223,15 +254,15 @@ rankChords offsets = sortBy (\l r -> compare (penalty l) (penalty r)) offsets
 
 ----------------- PRINTING FUNCTIONS -----------------
 
--- Creates a string of 'n' finger placements
-printChords :: Int -> [[Int]] -> String
-printChords n offsets = concat [printChord x ++ "\n" | x <- (take n offsets)]
-
 -- Creates a string of a finger placement
-printChord :: [Int] -> String
-printChord chord = concat [(show (toEnum (banjoStrings!!i)::Note)) ++ " |---" ++ (show f) ++ "---|\n" | (f, i) <- reverse (zip chord [0..3])]
+printBanjoChord :: [Int] -> String
+printBanjoChord chord = concat [(show (toEnum (banjoStrings!!i)::Note)) ++ " |---" ++ (show f) ++ "---|\n" | (f, i) <- reverse (zip chord [0..3])]
 
 -- Converts a list of offsets to a list of Notes
 offsetsToNotes :: [Int] -> [Note]
 offsetsToNotes [] = []
 offsetsToNotes (x:xs) = (toEnum x: offsetsToNotes xs)
+
+notesToOffsets :: [Note] -> [Int]
+notesToOffsets [] = []
+notesToOffsets (x:xs) = (fromEnum x: notesToOffsets xs)
