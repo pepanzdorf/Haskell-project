@@ -1,6 +1,7 @@
 module Banjo (module Banjo) where
 
 import Data.List
+import Text.Read
 
 -- Data structure definitions
 
@@ -10,7 +11,7 @@ data Note = Note BaseNote Accidental
 data MainMarking = Major | Minor | Dim | Aug | Sus4 | Sus2 deriving (Show)
 data Alternation =  Minor7 | Major7 | Minor9 | Major9 | Add9  deriving (Show, Eq, Ord)
 data Chord = Chord Note MainMarking [Alternation]
-data Parsed a = Parsed a Int
+data Parsed a = Parsed a Int -- Type so functions can return length of parsed sequence
 
 instance Show Accidental where
   show Natural = ""
@@ -82,40 +83,62 @@ stringFrets instrumentStrings notes = zipWith (-) notes instrumentStrings
 
 --------------------- PARSING FUNCTIONS -----------------------
 
--- Parses a chord given as string "Am" to the Chord data type "Chord (Note A Natural) Minor []"
-parseChord :: String -> Chord
-parseChord str = Chord rootNote mainMarking $ parseAlternations $ drop (lengthNote + lengthMarking) str
-                    where
-                      Parsed rootNote lengthNote = parseNote str
-                      Parsed mainMarking lengthMarking =  parseMainMarking (drop lengthNote str)
+---- Parses a chord given as string "Am" to the Chord data type "Chord (Note A Natural) Minor []"
+parseChord :: String -> Either String Chord
+parseChord str = do
+                    Parsed rootNote lenNote <- parseNote str
+                    Parsed mainMarking lenMarking <- parseMainMarking $ drop lenNote str
+                    alternations <- parseAlternations $ drop (lenNote + lenMarking) str
+                    Right (Chord rootNote mainMarking alternations)
 
 -- Given a chord as string try to parse first 1/2 characters as a Note
-parseNote :: String -> Parsed Note
-parseNote (base:'b':_) = Parsed (Note (read [base]::BaseNote) Flat) 2
-parseNote (base:'#':_) = Parsed (Note (read [base]::BaseNote) Sharp) 2
-parseNote (base:_) = Parsed (Note (read [base]::BaseNote) Natural) 1
-parseNote [] = error "Invalid chord structure."
+parseNote :: String -> Either String (Parsed Note)
+parseNote [] = Left "No chord input."
+parseNote [base] = case readEither [base]::Either String BaseNote of
+                     Left err -> Left ("Invalid note: " ++ [base])
+                     Right note -> Right (Parsed (Note note Natural) 1)
+parseNote (base:accidental:_) = case readEither [base]::Either String BaseNote of
+                                  Left err -> Left ("Invalid note: " ++ [base])
+                                  Right note ->
+                                      if accidental == 'b' then
+                                        Right (Parsed (Note note Flat) 2)
+                                      else if accidental == '#' then
+                                        Right (Parsed (Note note Sharp) 2)
+                                      else
+                                        Right (Parsed (Note note Natural) 1)
+
 
 -- Given a string try to parse the MainMarking as a prefix of the string, if no MainMarking is found the chord is Major
-parseMainMarking :: String -> Parsed MainMarking
-parseMainMarking str | (isPrefixOf "maj7" str) = Parsed Major 0
-                     | isPrefixOf "maj9" str = Parsed Major 0
-                     | (isPrefixOf "m" str) = Parsed Minor 1
-                     | (isPrefixOf "dim" str) = Parsed Dim 3
-                     | (isPrefixOf "aug" str) = Parsed Aug 3
-                     | (isPrefixOf "sus4" str) = Parsed Sus4 4
-                     | (isPrefixOf "sus2" str) = Parsed Sus2 4
-                     | otherwise = Parsed Major 0
+parseMainMarking :: String -> Either String (Parsed MainMarking)
+parseMainMarking str | (isPrefixOf "maj7" str) = Right (Parsed Major 0)
+                     | isPrefixOf "maj9" str   = Right (Parsed Major 0)
+                     | (isPrefixOf "m" str)    = Right (Parsed Minor 1)
+                     | (isPrefixOf "dim" str)  = Right (Parsed Dim 3)
+                     | (isPrefixOf "aug" str)  = Right (Parsed Aug 3)
+                     | (isPrefixOf "sus4" str) = Right (Parsed Sus4 4)
+                     | (isPrefixOf "sus2" str) = Right (Parsed Sus2 4)
+                     | otherwise               = Right (Parsed Major 0)
 
 -- Given a string try to parse it into a list of chord alternations
-parseAlternations :: String -> [Alternation]
-parseAlternations [] = []
-parseAlternations str | isPrefixOf "maj7" str = (Major7:(parseAlternations (drop 4 str)))
-                      | isPrefixOf "7" str = (Minor7:(parseAlternations (drop 1 str)))
-                      | isPrefixOf "9" str = (Minor9:(parseAlternations (drop 1 str)))
-                      | isPrefixOf "maj9" str = (Major9:(parseAlternations (drop 4 str)))
-                      | isPrefixOf "add9" str = (Add9:(parseAlternations (drop 4 str)))
-                      | otherwise = error "Invalid chord structure."
+parseAlternations :: String -> Either String [Alternation]
+parseAlternations [] = Right []
+parseAlternations str
+  | isPrefixOf "maj7" str = do
+      rest <- parseAlternations (drop 4 str)
+      Right (Major7:rest)
+  | isPrefixOf "7" str = do
+      rest <- parseAlternations (drop 1 str)
+      Right (Minor7:rest)
+  | isPrefixOf "9" str = do
+      rest <- parseAlternations (drop 1 str)
+      Right (Minor9:rest)
+  | isPrefixOf "maj9" str = do
+      rest <- parseAlternations (drop 4 str)
+      Right (Major9:rest)
+  | isPrefixOf "add9" str = do
+      rest <- parseAlternations (drop 4 str)
+      Right (Add9:rest)
+  | otherwise = Left ("Invalid alternation for chord: " ++ str)
 
 
 ----------------- FUNCTIONS FOR CREATING FINGER PLACEMENTS -------------------
@@ -172,7 +195,7 @@ fillChordBanjo off | l == 3 = nub [(off!!i:off) | i <- [0..2]]
                         l = length off
                         first = off!!0
                         second = off!!1
-                  
+
 -- Each note of the chord could also be played one octave higher. This function creates all the possible combinations
 createOctaves :: [Int] -> [[Int]]
 createOctaves s = nub [addOctaves x | x <- threeWaySplits]
@@ -195,7 +218,7 @@ isPlayable off | not (isNegative off || highFret off) = True
 rankChords :: [[Int]] -> [[Int]]
 rankChords offsets = sortBy (\l r -> compare (penalty l) (penalty r)) offsets
                   where
-                    penalty off = (sum [abs (x - y) | x <- off, y <- off]) `div` 4 + (sum (map (`div`4) off))
+                    penalty off = (sum [abs (x - y) | x <- off, y <- off]) + sum off
 
 
 ----------------- PRINTING FUNCTIONS -----------------
