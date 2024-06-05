@@ -1,10 +1,8 @@
 module Banjo (module Banjo) where
 
-import Data.List
-import Data.Maybe
-import Data.Either
+import Data.List (nub, sortBy, permutations, isPrefixOf, subsequences, (\\))
+import Data.Either (fromRight)
 import Text.Read
-import Control.Applicative
 
 -- Data structure definitions
 
@@ -23,6 +21,13 @@ instance Show Accidental where
 
 instance Show Note where
   show (Note bass acc) = show bass ++ show acc
+
+
+instance Show Chord where
+  show (Chord n m s) = (show n) ++ " " ++ (show m) ++ showAlternations s
+                       where
+                           showAlternations [] = ""
+                           showAlternations (x:xs) = " " ++ show x ++ showAlternations xs
 
 instance Read Note where
   readsPrec _ input =
@@ -51,12 +56,6 @@ instance Read Note where
                     isLeft :: Either a b -> Bool
                     isLeft (Left _) = True
                     isLeft _        = False
-
-instance Show Chord where
-  show (Chord n m s) = (show n) ++ " " ++ (show m) ++ showAlternations s
-                       where
-                           showAlternations [] = ""
-                           showAlternations (x:xs) = " " ++ show x ++ showAlternations xs
 
 instance Enum Note where
   fromEnum (Note C Natural) = 0
@@ -126,10 +125,10 @@ parseChord str = do
 parseNote :: String -> Either String (Parsed Note)
 parseNote [] = Left "No chord input."
 parseNote [base] = case readEither [base]::Either String BaseNote of
-                     Left err -> Left ("Invalid note: " ++ [base])
+                     Left _ -> Left ("Invalid note: " ++ [base])
                      Right note -> Right (Parsed (Note note Natural) 1)
 parseNote (base:accidental:_) = case readEither [base]::Either String BaseNote of
-                                  Left err -> Left ("Invalid note: " ++ [base])
+                                  Left _ -> Left ("Invalid note: " ++ [base])
                                   Right note ->
                                       if accidental == 'b' then
                                         Right (Parsed (Note note Flat) 2)
@@ -214,17 +213,17 @@ allPossibleBanjoOffsetPositions off = nub $ concat [permutations x | x <- possib
 
 -- If the chord consists of < 4 notes we duplicate some of the notes. This creates all the possible combinations
 fillChordBanjo :: [Int] -> [[Int]]
-fillChordBanjo off | l == 3 = nub [(off!!i:off) | i <- [0..2]]
+fillChordBanjo off | l == 3 = nub [(off!!i:off) | i <- [0..2]::[Int]]
                    | l == 2 = nub [(first:second:off), (first:first:off), (second:second:off)]
-                   | l == 1 = [[x | x <- off, _ <- [0..3]]]
+                   | l == 1 = [[x | x <- off, _ <- [0..3]::[Int]]]
                    | l == 4 = [off]
-                   | otherwise = []
+                   | otherwise = [] -- Anything with more than 4 notes is not playable on the banjo
                       where
                         l = length off
                         first = off!!0
                         second = off!!1
 
--- Each note of the chord could also be played one octave higher. This function creates all the possible combinations
+-- Each note of the chord could also be played octaves higher. This function creates all the possible combinations
 createOctaves :: [Int] -> [[Int]]
 createOctaves s = nub [addOctaves x | x <- threeWaySplits]
                   where
