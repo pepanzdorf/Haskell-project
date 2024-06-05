@@ -8,10 +8,13 @@ handleOffsets offsets = do
     putStrLn $ "Notes of chord: " ++ show (offsetsToNotes offsets) ++ "\n"
     let allFingerPlacements = rankChords $ filter isPlayable $ map banjoFrets $ allPossibleBanjoOffsetPositions offsets
     putStrLn "Input number of finger placements to show:"
-    nPlacements <- getLine
-    let chordsAsString = unlines $ map printBanjoChord $ take (read nPlacements::Int) allFingerPlacements
-    let nFingerPlacements = length allFingerPlacements
-    putStrLn $ "Found " ++ show nFingerPlacements ++ " finger placements, showing " ++ show (read nPlacements::Int) ++ ":\n" ++ chordsAsString
+    nextLine <- getLine
+    case readEither nextLine::Either String Int of
+      Right n -> do
+                  let chordsAsString = unlines $ map printBanjoChord $ take n allFingerPlacements
+                  let nFingerPlacements = length allFingerPlacements
+                  putStrLn $ "Found " ++ show nFingerPlacements ++ " finger placements, showing " ++ show n ++ ":\n" ++ chordsAsString
+      Left _ -> putStrLn "Invalid number."
 
 
 
