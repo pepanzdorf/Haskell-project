@@ -208,11 +208,8 @@ markingToOffsets Aug = [4, 8]
 
 -- From a given list of notes as offsets creates a list of lists of all the possible permutations and octave changes
 allPossibleBanjoOffsetPositions :: [Int] -> [[Int]]
-allPossibleBanjoOffsetPositions off | l > 4 = error "Chord is not playable on banjo (banjo has 4 strings, the chord requires 5)"
-                                    | l == 0 = error "Invalid chord. (No notes)"
-                                    | otherwise = nub $ concat [permutations x | x <- possibleOffsets]
+allPossibleBanjoOffsetPositions off = nub $ concat [permutations x | x <- possibleOffsets]
                                       where
-                                        l = length off
                                         possibleOffsets = nub $ concat [createOctaves x | x <- (fillChordBanjo off)]
 
 -- If the chord consists of < 4 notes we duplicate some of the notes. This creates all the possible combinations
@@ -221,7 +218,7 @@ fillChordBanjo off | l == 3 = nub [(off!!i:off) | i <- [0..2]]
                    | l == 2 = nub [(first:second:off), (first:first:off), (second:second:off)]
                    | l == 1 = [[x | x <- off, _ <- [0..3]]]
                    | l == 4 = [off]
-                   | otherwise = error "Invalid chord for banjo."
+                   | otherwise = []
                       where
                         l = length off
                         first = off!!0
